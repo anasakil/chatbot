@@ -1,23 +1,40 @@
 import express from "express";
 import dotenv from "dotenv";
 import axios from "axios";
+import rateLimit from "express-rate-limit";
+import cors from "cors"; // Add this import
 
 dotenv.config();
 const app = express();
-const port = 3000;
+const port = 4500; // Updated port
+
+// Enable CORS for all origins (for development)
+app.use(cors({
+  origin: '*', // Use '*' instead of ['*']
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
 
 app.use(express.json());
 
+// ✅ Rate limiting : max 20 requêtes/minute par IP
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,
+  message: "Trop de requêtes, réessayez plus tard.",
+});
+app.use(limiter);
+
+// ✅ Contexte du chatbot
 const context = `
 À propos :
 Je suis Anas Akil, développeur full stack (Flutter, MERN, Laravel, WordPress).
 Je conçois des applications web et mobiles, des sites e-commerce, des chatbots, etc.
 
 Services :
-- Développement d'apps Flutter (Android/iOS)
+- Développement d'apps mobile Flutter (Android/iOS)
 - Création de sites vitrines et e-commerce avec WordPress
-- Automatisation avec Python & Scrapy
-- Intégration Odoo
+- Automatisation avec n8n    Web scraping Python & Scrapy
 - Déploiement via Netlify, Docker, cPanel
 
 Contact :
@@ -25,22 +42,27 @@ Contact :
 - Téléphone : +212 6 12 34 56 78
 
 Tarifs :
-- Site vitrine : à partir de 500 €
-- App mobile Flutter : à partir de 1200 €
+- Site vitrine : à partir de 500€
+- App mobile Flutter : à partir de 1200€
 `;
 
 app.post("/chat", async (req, res) => {
   try {
     const { message } = req.body;
 
+    // ✅ Validation du message
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ error: "Le message est requis et doit être une chaîne non vide." });
+    }
+
     const response = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
+      "https://api.groq.com/openai/v1/chat/completions",
       {
-        model: "deepseek/deepseek-chat-v3-0324:free",
+        model: "moonshotai/kimi-k2-instruct",
         messages: [
           {
             role: "system",
-            content: `Tu es un assistant personnel de Anas Akil. Réponds uniquement à partir de ces informations :\n\n${context}\n\nSi tu ne sais pas, réponds honnêtement. Réponds toujours en français.`,
+            content: `Tu es un assistant personnel de Anas Akil. Tu dois répondre uniquement à partir de ces informations :\n\n${context}\n\nSi tu ne sais pas, réponds honnêtement.`,
           },
           {
             role: "user",
@@ -50,10 +72,8 @@ app.post("/chat", async (req, res) => {
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://anasakil.netlify.app",
-          "X-Title": "Anas-Akil-Chatbot",
         },
       }
     );
@@ -61,11 +81,14 @@ app.post("/chat", async (req, res) => {
     const reply = response.data.choices[0].message.content;
     res.json({ answer: reply });
   } catch (error) {
-    console.error("Erreur OpenRouter:", error?.response?.data || error.message);
-    res.status(500).json({ error: "Erreur serveur OpenRouter" });
+    console.error("Erreur Groq:", error?.response?.data || error.message);
+    res.status(500).json({ error: "Erreur serveur Groq" });
   }
 });
 
+// ✅ Endpoint de test
+app.get("/ping", (req, res) => res.send("pong"));
+
 app.listen(port, () => {
-  console.log(`✅ Serveur OpenRouter en ligne sur http://localhost:${port}`);
+  console.log(`✅ Serveur en ligne sur http://localhost:${port}`);
 });
