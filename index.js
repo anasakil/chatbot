@@ -1,5 +1,29 @@
+import express from "express";
+import dotenv from "dotenv";
 import axios from "axios";
+import rateLimit from "express-rate-limit";
+import cors from "cors";
 
+dotenv.config();
+const app = express();
+const port = 4500; 
+
+app.use(cors({
+  origin: '*', 
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
+
+app.use(express.json());
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000, 
+  max: 20,
+  message: "Trop de requêtes, réessayez plus tard.",
+});
+app.use(limiter);
+
+// ✅ Contexte du chatbot
 const context = `
 À propos :
 Je suis Anas Akil, développeur full stack (Flutter, MERN, Laravel, WordPress).
@@ -20,29 +44,15 @@ Tarifs :
 - App mobile Flutter : à partir de 1200€
 `;
 
-export default async function handler(req, res) {
-  // ✅ Activer CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  // ✅ Répondre aux requêtes OPTIONS (pré-vol CORS)
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  // ✅ Ne garder que POST
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Méthode non autorisée" });
-  }
-
-  const { message } = req.body;
-
-  if (!message || typeof message !== "string" || message.trim() === "") {
-    return res.status(400).json({ error: "Le message est requis et doit être une chaîne non vide." });
-  }
-
+app.post("/chat", async (req, res) => {
   try {
+    const { message } = req.body;
+
+    // ✅ Validation du message
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ error: "Le message est requis et doit être une chaîne non vide." });
+    }
+
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -67,9 +77,16 @@ export default async function handler(req, res) {
     );
 
     const reply = response.data.choices[0].message.content;
-    res.status(200).json({ answer: reply });
+    res.json({ answer: reply });
   } catch (error) {
     console.error("Erreur Groq:", error?.response?.data || error.message);
     res.status(500).json({ error: "Erreur serveur Groq" });
   }
-}
+});
+
+// ✅ Endpoint de test
+app.get("/ping", (req, res) => res.send("pong"));
+
+app.listen(port, () => {
+  console.log(`✅ Serveur en ligne sur http://localhost:${port}`);
+});
